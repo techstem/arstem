@@ -2,11 +2,11 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>WebAR Final Share</title>
+  <title>WebAR Final Shot Fix</title>
   <style>
     body { margin: 0; overflow: hidden; }
 
-    /* Рамка экрана (Оверлей) */
+    /* Оверлей рамка */
     #screen-border {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background-image: url('./screen_border.png');
@@ -14,20 +14,18 @@
       pointer-events: none; z-index: 999;
     }
     
-    /* Конфетти (Lottie) */
+    /* Конфетти Lottie */
     #lottie-container {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       z-index: 2000; pointer-events: none; display: none; 
     }
 
     /* --- ИНТЕРФЕЙС --- */
-    
-    /* Кнопка Фото */
     #capture-btn {
       position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
       width: 70px; height: 70px; background: white; border: 4px solid #ccc;
       border-radius: 50%; z-index: 3000; cursor: pointer; display: none;
-      -webkit-tap-highlight-color: transparent; /* Убирает мигание на iOS */
+      -webkit-tap-highlight-color: transparent;
     }
     #capture-btn:active { transform: translateX(-50%) scale(0.95); background: #eee; }
     #capture-btn::after {
@@ -36,7 +34,6 @@
         background: #ff0055; border-radius: 50%;
     }
 
-    /* Кнопка Смены камеры */
     #switch-btn {
       position: fixed; top: 20px; right: 20px; width: 50px; height: 50px;
       background: rgba(0,0,0,0.5); border-radius: 50%; border: 1px solid white;
@@ -45,7 +42,6 @@
     }
     #switch-btn svg { width: 30px; height: 30px; fill: white; }
 
-    /* Главная кнопка */
     #action-btn {
       position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
       padding: 12px 30px; font-size: 18px; border-radius: 40px;
@@ -60,11 +56,11 @@
       font-family: monospace; font-size: 10px; pointer-events: none;
     }
 
-    /* Стиль для вспышки */
+    /* Вспышка (медленная) */
     .flash-effect {
         position: fixed; top:0; left:0; width:100%; height:100%;
         background: white; z-index: 9999; opacity: 1;
-        transition: opacity 0.8s ease-out; /* <-- Плавное затухание (Исправление 2) */
+        transition: opacity 0.8s ease-out;
     }
   </style>
 
@@ -90,78 +86,57 @@
         console.log(msg);
     }
 
-    // Предзагружаем картинку рамки для скриншота
     const borderOverlayImage = new Image();
     borderOverlayImage.src = './screen_border.png';
     borderOverlayImage.crossOrigin = "anonymous";
 
-    // --- НОВАЯ ФУНКЦИЯ: ФОТО + ШЕРИНГ ---
-    async function captureAndShare(mindarThree) {
+    // --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ФОТО (Добавлены scene и camera) ---
+    async function captureAndShare(mindarThree, scene, camera) {
         const video = mindarThree.video;
         const renderer = mindarThree.renderer;
         
-        // 1. Создаем холст
         const canvas = document.createElement("canvas");
-        // Делаем холст по размеру экрана телефона для лучшего качества
         canvas.width = window.innerWidth * window.devicePixelRatio;
         canvas.height = window.innerHeight * window.devicePixelRatio;
         const ctx = canvas.getContext("2d");
 
-        // --- РИСУЕМ СЛОИ ---
-
-        // Слой A: Видео (нужно отзеркалить и правильно растянуть)
-        // Вычисляем пропорции, чтобы видео заполнило экран без искажений (object-fit: cover)
+        // Слой A: Видео
         const videoAspect = video.videoWidth / video.videoHeight;
         const canvasAspect = canvas.width / canvas.height;
         let drawW, drawH, startX, startY;
-
         if (canvasAspect > videoAspect) {
-            drawW = canvas.width;
-            drawH = canvas.width / videoAspect;
-            startX = 0;
-            startY = (canvas.height - drawH) / 2;
+            drawW = canvas.width; drawH = canvas.width / videoAspect;
+            startX = 0; startY = (canvas.height - drawH) / 2;
         } else {
-            drawW = canvas.height * videoAspect;
-            drawH = canvas.height;
-            startX = (canvas.width - drawW) / 2;
-            startY = 0;
+            drawW = canvas.height * videoAspect; drawH = canvas.height;
+            startX = (canvas.width - drawW) / 2; startY = 0;
         }
-
         ctx.save();
-        ctx.translate(canvas.width, 0); ctx.scale(-1, 1); // Зеркалим
-        // Рисуем с учетом смещения для центрирования
+        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
         ctx.drawImage(video, -startX, startY, drawW, drawH); 
         ctx.restore();
 
-        // Слой B: 3D AR (Картинки на голове)
+        // Слой B: 3D AR (КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ!)
+        // Принудительно рендерим сцену прямо сейчас, чтобы буфер был свежим
+        renderer.render(scene, camera);
+        // Теперь рисуем WebGL холст
         ctx.drawImage(renderer.domElement, 0, 0, canvas.width, canvas.height);
 
-        // Слой C: Оверлей рамка (Исправление 1)
-        // Рисуем рамку поверх всего, растягивая на весь холст
+        // Слой C: Оверлей рамка
         if (borderOverlayImage.complete) {
              ctx.drawImage(borderOverlayImage, 0, 0, canvas.width, canvas.height);
         }
 
-        // --- ШЕРИНГ (Исправление 3) ---
-        
-        // Конвертируем холст в файл (Blob)
+        // Шеринг
         canvas.toBlob(async (blob) => {
             const file = new File([blob], "ar-photo.png", { type: "image/png" });
-
-            // Проверяем, поддерживает ли браузер шеринг файлов
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 try {
                     await navigator.share({
-                        files: [file],
-                        title: 'Мой AR образ',
-                        text: 'Смотри, что получилось!'
+                        files: [file], title: 'Мой AR образ', text: 'Смотри, что получилось!'
                     });
-                } catch (error) {
-                    log("Шеринг отменен или ошибка: " + error);
-                }
+                } catch (error) { log("Шеринг отменен: " + error); }
             } else {
-                // Запасной вариант: простое скачивание (для ПК)
-                log("Шеринг не поддерживается, скачиваю файл.");
                 const link = document.createElement("a");
                 link.download = "ar-photo.png";
                 link.href = canvas.toDataURL("image/png");
@@ -170,7 +145,7 @@
         }, 'image/png');
     }
 
-    // --- LOTTIE ---
+    // LOTTIE
     let lottieAnim = null;
     window.initLottie = () => {
         lottieAnim = lottie.loadAnimation({
@@ -186,10 +161,10 @@
         const mindarThree = new MindARThree({
           container: document.querySelector("#container"),
         });
+        // Получаем scene и camera здесь, они нужны для фото
         const { renderer, scene, camera } = mindarThree;
         
-        // ВАЖНО: Разрешаем захват буфера для скриншотов
-        renderer.preserveDrawingBuffer = true;
+        renderer.preserveDrawingBuffer = true; // На всякий случай оставляем
 
         const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 2);
         scene.add(light);
@@ -211,11 +186,8 @@
 
         iconPaths.forEach((path, index) => {
             textureLoader.load(path, (tex) => {
-                // Улучшаем качество текстур
-                tex.minFilter = THREE.LinearFilter;
-                tex.magFilter = THREE.LinearFilter;
+                tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
                 tex.colorSpace = THREE.SRGBColorSpace;
-
                 const geo = new THREE.PlaneGeometry(0.6, 0.6); 
                 const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
                 const mesh = new THREE.Mesh(geo, mat);
@@ -226,7 +198,7 @@
             });
         });
 
-        // --- ЛОГИКА ---
+        // ЛОГИКА
         let isRunning = false;
         let startTime = 0;
         let lastSwitchTime = 0;
@@ -238,26 +210,21 @@
             if (isRunning) return;
             isRunning = true;
             startTime = new Date().getTime() / 1000;
-            
             document.getElementById('action-btn').style.display = 'none';
             document.getElementById('capture-btn').style.display = 'block';
-            
             document.getElementById('lottie-container').style.display = 'none';
             if(lottieAnim) lottieAnim.stop();
         };
 
-        // КНОПКА ФОТО (С обновленной вспышкой и шерингом)
+        // КНОПКА ФОТО (Передаем scene и camera)
         window.takeSnap = () => {
-            // 1. Запускаем процесс сохранения/шеринга
-            captureAndShare(mindarThree);
+            // <-- ВАЖНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ
+            captureAndShare(mindarThree, scene, camera);
             
-            // 2. Анимация вспышки (Исправление 2)
             const flash = document.createElement('div');
             flash.className = 'flash-effect';
             document.body.appendChild(flash);
-            // Держим белым 200мс, потом начинаем затухание (0.8с)
             setTimeout(() => { flash.style.opacity='0'; }, 200);
-            // Удаляем элемент через 1 секунду
             setTimeout(() => { flash.remove(); }, 1000);
         };
 
