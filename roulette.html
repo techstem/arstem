@@ -2,15 +2,17 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WebAR Roulette Final</title>
+  <title>AR Roulette + Lottie</title>
   <style>
     body { margin: 0; overflow: hidden; }
     
-    #screen-border {
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background-image: url('./screen_border.png');
-      background-size: 100% 100%; background-repeat: no-repeat;
-      pointer-events: none; z-index: 999;
+    /* Слой для конфетти (поверх всего) */
+    #lottie-container {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 2000; /* Самый верхний слой */
+      pointer-events: none; /* Чтобы сквозь него можно было нажимать кнопки */
+      display: none; /* Скрыто по умолчанию */
     }
 
     #bottom-ui {
@@ -19,17 +21,20 @@
     }
     
     button {
-      padding: 12px 24px; font-size: 18px; border-radius: 30px;
-      border: none; background: white; color: black; font-weight: bold;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer;
+      padding: 15px 30px; font-size: 20px; border-radius: 40px;
+      border: none; background: #ff0055; color: white; font-weight: bold;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer;
     }
+    button:active { transform: scale(0.95); }
 
     #debug-console {
-      position: fixed; top: 0; left: 0; background: rgba(0,0,0,0.6); 
-      color: lime; padding: 10px; z-index: 9999; max-width: 250px;
-      font-size: 12px; pointer-events: none; font-family: monospace;
+      position: fixed; top: 0; left: 0; background: rgba(0,0,0,0.5); 
+      color: #00ff00; padding: 10px; z-index: 9999; 
+      font-family: monospace; font-size: 14px; pointer-events: none;
     }
   </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 
   <script type="importmap">
     {
@@ -45,15 +50,31 @@
     import * as THREE from 'three';
     import { MindARThree } from 'mindar-face-three';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
     function log(msg) {
         const el = document.getElementById('debug-console');
-        if(el) el.innerHTML += msg + "<br>";
-        console.log(msg);
+        if(el) el.innerHTML = msg + "<br>" + el.innerHTML;
     }
 
+    // --- НАСТРОЙКА LOTTIE (КОНФЕТТИ) ---
+    let lottieAnim = null;
+
+    // Эта функция запустится, когда страница загрузится
+    window.initLottie = () => {
+        lottieAnim = lottie.loadAnimation({
+            container: document.getElementById('lottie-container'), // Куда вставлять
+            renderer: 'svg',
+            loop: true,     // Зациклить? (true/false)
+            autoplay: false, // Не запускать сразу
+            path: './confetti.json' // Путь к твоему JSON файлу
+        });
+        log("Lottie готов");
+    };
+
     const start = async () => {
+      // Инициализируем Lottie
+      window.initLottie();
+
       try {
         const mindarThree = new MindARThree({
           container: document.querySelector("#container"),
@@ -65,136 +86,91 @@
 
         const anchor = mindarThree.addAnchor(1);
 
-        // 1. MASK (OCCLUDER)
+        // MASK OCCLUDER
         const faceMesh = mindarThree.addFaceMesh();
         faceMesh.material = new THREE.MeshBasicMaterial({ colorWrite: false });
         faceMesh.renderOrder = 0;
         anchor.group.add(faceMesh);
 
-        // 2. ГРУППА РУЛЕТКИ
-        const rouletteGroup = new THREE.Group();
-        rouletteGroup.position.set(0, 0.8, -0.15); 
-        rouletteGroup.renderOrder = 1;
-        anchor.group.add(rouletteGroup);
-
+        // --- ЗАГРУЗКА ИКОНОК ---
         const textureLoader = new THREE.TextureLoader();
-        
-        // --- ЗАГРУЗКА РАМОК ---
-        const frameStartTex = textureLoader.load('./frame_start.png');
-        const frameEndTex = textureLoader.load('./frame_end.png');
-
-        const frameGeo = new THREE.PlaneGeometry(0.7, 0.8);
-        const frameMat = new THREE.MeshBasicMaterial({ map: frameStartTex, transparent: true });
-        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
-        frameMesh.renderOrder = 3; // Рамка всегда поверх картинок
-        rouletteGroup.add(frameMesh);
-
-
-        // --- ЗАГРУЗКА ИКОНОК (МЕТОД ВИДИМОСТИ) ---
-        // Создаем массив мешей, а не текстур.
         const iconPaths = ['./icon1.png', './icon2.png', './icon3.png', './icon4.png'];
         const iconMeshes = [];
+        const contentGroup = new THREE.Group();
+        contentGroup.position.set(0, 0.8, -0.1); 
+        anchor.group.add(contentGroup);
 
-        // Создаем 4 плашки, кладем их в одно место, но скрываем
         iconPaths.forEach((path, index) => {
-            const tex = textureLoader.load(path, 
-                () => log(`Иконка ${index+1} ок`),
-                undefined,
-                () => log(`ERR: ${path}`)
-            );
-            
-            const geo = new THREE.PlaneGeometry(0.5, 0.5);
-            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
-            const mesh = new THREE.Mesh(geo, mat);
-            
-            mesh.position.z = -0.02; // Чуть глубже рамки
-            mesh.renderOrder = 2;    // Под рамкой
-            mesh.visible = (index === 0); // Видна только первая
-            
-            rouletteGroup.add(mesh);
-            iconMeshes.push(mesh);
+            textureLoader.load(path, (tex) => {
+                const geo = new THREE.PlaneGeometry(0.6, 0.6);
+                const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.visible = (index === 0);
+                mesh.renderOrder = 2;
+                contentGroup.add(mesh);
+                iconMeshes[index] = mesh;
+                log(`Картинка ${index+1} готова`);
+            });
         });
 
-
-        // 3. КОНФЕТТИ (С DRACO)
-        let confettiMixer = null;
-        const loader = new GLTFLoader();
-        const dracoLoader = new DRACOLoader();
-        dracoLoader.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
-        loader.setDRACOLoader(dracoLoader);
-
-        loader.load('./confetti.glb', (gltf) => {
-            log("Конфетти загружено!");
-            const confetti = gltf.scene;
-            confetti.visible = false;
-            confetti.position.set(0, 1, -0.5);
-            confetti.scale.set(2, 2, 2);
-            window.confettiObject = confetti; 
-            scene.add(confetti); // В сцену, не к голове
-            
-            if(gltf.animations.length > 0) {
-                confettiMixer = new THREE.AnimationMixer(confetti);
-                confettiMixer.clipAction(gltf.animations[0]).play();
-            }
-        }, undefined, (err) => log("Ошибка конфетти: " + err.message));
-
-
-        // --- ЛОГИКА ---
-        let isSpinning = false;
-        let currentIdx = 0;
+        // --- ЛОГИКА АНИМАЦИИ ---
+        let isRunning = false;
+        let startTime = 0;
+        let lastSwitchTime = 0;
+        let currentImageIndex = 0;
+        const switchSpeed = 0.1;
+        const totalDuration = 3.0; 
 
         window.startRoulette = () => {
-            if (isSpinning) return;
-            isSpinning = true;
+            if (isRunning) return;
+            log("Старт рулетки!");
+            isRunning = true;
+            startTime = new Date().getTime() / 1000;
             document.getElementById('btn').style.display = 'none';
-            log("Старт!");
-
-            // Сброс состояния
-            frameMesh.material.map = frameStartTex;
-            frameMesh.material.needsUpdate = true;
-            if (window.confettiObject) window.confettiObject.visible = false;
             
-            // Сбрасываем иконки (показываем первую)
-            iconMeshes.forEach(m => m.visible = false);
-            iconMeshes[0].visible = true;
-            currentIdx = 0;
-
-            // ЗАПУСК КРУТИЛКИ
-            const spinInterval = setInterval(() => {
-                // Прячем текущую
-                iconMeshes[currentIdx].visible = false;
-                
-                // Вычисляем следующую
-                currentIdx = (currentIdx + 1) % iconMeshes.length;
-                
-                // Показываем новую
-                iconMeshes[currentIdx].visible = true;
-                
-            }, 100); // Скорость смены (100мс)
-
-            // ОСТАНОВКА ЧЕРЕЗ 3 СЕКУНДЫ
-            setTimeout(() => {
-                clearInterval(spinInterval);
-                isSpinning = false;
-                log("Стоп на: " + (currentIdx + 1));
-
-                // Меняем рамку
-                frameMesh.material.map = frameEndTex;
-                frameMesh.material.needsUpdate = true;
-
-                // Показываем конфетти
-                if (window.confettiObject) window.confettiObject.visible = true;
-
-                setTimeout(() => {
-                    document.getElementById('btn').style.display = 'inline-block';
-                    document.getElementById('btn').innerText = "Еще раз";
-                }, 2000);
-            }, 3000);
+            // Скрываем Lottie при рестарте
+            document.getElementById('lottie-container').style.display = 'none';
+            if(lottieAnim) lottieAnim.stop();
         };
 
         await mindarThree.start();
+
         renderer.setAnimationLoop(() => {
-            if (confettiMixer) confettiMixer.update(0.015);
+            const now = new Date().getTime() / 1000;
+
+            if (isRunning) {
+                // Если время вышло (ПОБЕДА)
+                if (now - startTime > totalDuration) {
+                    isRunning = false;
+                    log("Финиш!");
+
+                    // Оставляем только 4-ю картинку
+                    iconMeshes.forEach(m => { if(m) m.visible = false; });
+                    if (iconMeshes[3]) iconMeshes[3].visible = true;
+
+                    // --- ЗАПУСК LOTTIE ---
+                    const lottieDiv = document.getElementById('lottie-container');
+                    lottieDiv.style.display = 'block'; // Показываем слой
+                    if(lottieAnim) {
+                        lottieAnim.goToAndPlay(0, true); // Играем с начала
+                    }
+                    // ---------------------
+
+                    setTimeout(() => {
+                        document.getElementById('btn').style.display = 'inline-block';
+                        document.getElementById('btn').innerText = "Еще раз";
+                    }, 2000);
+
+                } else {
+                    // Крутим рулетку
+                    if (now - lastSwitchTime > switchSpeed) {
+                        lastSwitchTime = now;
+                        if (iconMeshes[currentImageIndex]) iconMeshes[currentImageIndex].visible = false;
+                        currentImageIndex = (currentImageIndex + 1) % 4;
+                        if (iconMeshes[currentImageIndex]) iconMeshes[currentImageIndex].visible = true;
+                    }
+                }
+            }
             renderer.render(scene, camera);
         });
 
@@ -206,11 +182,14 @@
   </script>
 </head>
 <body>
-  <div id="debug-console">Инициализация...<br></div>
-  <div id="screen-border"></div>
+  <div id="debug-console">Готов...<br></div>
+  
+  <div id="lottie-container"></div>
+
   <div id="container" style="width: 100vw; height: 100vh;"></div>
+  
   <div id="bottom-ui">
-    <button id="btn" onclick="startRoulette()">КТО ТЫ СЕГОДНЯ?</button>
+    <button id="btn" onclick="startRoulette()">КРУТИТЬ</button>
   </div>
 </body>
 </html>
