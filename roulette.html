@@ -2,22 +2,32 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AR Roulette + Lottie</title>
+  <title>AR Roulette Final</title>
   <style>
     body { margin: 0; overflow: hidden; }
+
+    /* 1. ВЕРНУЛ РАМКУ ЭКРАНА */
+    #screen-border {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-image: url('./screen_border.png'); /* Твоя картинка */
+      background-size: 100% 100%; 
+      background-repeat: no-repeat;
+      pointer-events: none; 
+      z-index: 999; /* Поверх видео, но под интерфейсом */
+    }
     
-    /* Слой для конфетти (поверх всего) */
+    /* Слой для конфетти (Самый верхний) */
     #lottie-container {
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      z-index: 2000; /* Самый верхний слой */
-      pointer-events: none; /* Чтобы сквозь него можно было нажимать кнопки */
-      display: none; /* Скрыто по умолчанию */
+      z-index: 2000; 
+      pointer-events: none; 
+      display: none; 
     }
 
     #bottom-ui {
       position: fixed; bottom: 30px; left: 0; width: 100%;
-      text-align: center; z-index: 1000; font-family: sans-serif;
+      text-align: center; z-index: 3000; font-family: sans-serif;
     }
     
     button {
@@ -49,30 +59,27 @@
   <script type="module">
     import * as THREE from 'three';
     import { MindARThree } from 'mindar-face-three';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     function log(msg) {
         const el = document.getElementById('debug-console');
         if(el) el.innerHTML = msg + "<br>" + el.innerHTML;
     }
 
-    // --- НАСТРОЙКА LOTTIE (КОНФЕТТИ) ---
+    // --- НАСТРОЙКА LOTTIE ---
     let lottieAnim = null;
 
-    // Эта функция запустится, когда страница загрузится
     window.initLottie = () => {
         lottieAnim = lottie.loadAnimation({
-            container: document.getElementById('lottie-container'), // Куда вставлять
+            container: document.getElementById('lottie-container'), 
             renderer: 'svg',
-            loop: true,     // Зациклить? (true/false)
-            autoplay: false, // Не запускать сразу
-            path: './confetti.json' // Путь к твоему JSON файлу
+            loop: false,     // <--- ИСПРАВЛЕНО: Теперь проигрывается 1 раз
+            autoplay: false, 
+            path: './confetti.json' 
         });
         log("Lottie готов");
     };
 
     const start = async () => {
-      // Инициализируем Lottie
       window.initLottie();
 
       try {
@@ -92,7 +99,7 @@
         faceMesh.renderOrder = 0;
         anchor.group.add(faceMesh);
 
-        // --- ЗАГРУЗКА ИКОНОК ---
+        // КАРТИНКИ
         const textureLoader = new THREE.TextureLoader();
         const iconPaths = ['./icon1.png', './icon2.png', './icon3.png', './icon4.png'];
         const iconMeshes = [];
@@ -113,7 +120,7 @@
             });
         });
 
-        // --- ЛОГИКА АНИМАЦИИ ---
+        // ПЕРЕМЕННЫЕ
         let isRunning = false;
         let startTime = 0;
         let lastSwitchTime = 0;
@@ -123,14 +130,16 @@
 
         window.startRoulette = () => {
             if (isRunning) return;
-            log("Старт рулетки!");
+            log("Старт!");
             isRunning = true;
             startTime = new Date().getTime() / 1000;
             document.getElementById('btn').style.display = 'none';
             
             // Скрываем Lottie при рестарте
             document.getElementById('lottie-container').style.display = 'none';
-            if(lottieAnim) lottieAnim.stop();
+            if(lottieAnim) {
+                lottieAnim.stop();
+            }
         };
 
         await mindarThree.start();
@@ -139,30 +148,28 @@
             const now = new Date().getTime() / 1000;
 
             if (isRunning) {
-                // Если время вышло (ПОБЕДА)
+                // ПОБЕДА
                 if (now - startTime > totalDuration) {
                     isRunning = false;
                     log("Финиш!");
 
-                    // Оставляем только 4-ю картинку
                     iconMeshes.forEach(m => { if(m) m.visible = false; });
                     if (iconMeshes[3]) iconMeshes[3].visible = true;
 
-                    // --- ЗАПУСК LOTTIE ---
+                    // ЗАПУСК LOTTIE
                     const lottieDiv = document.getElementById('lottie-container');
-                    lottieDiv.style.display = 'block'; // Показываем слой
+                    lottieDiv.style.display = 'block'; 
                     if(lottieAnim) {
-                        lottieAnim.goToAndPlay(0, true); // Играем с начала
+                        lottieAnim.goToAndPlay(0, true); // Играем с начала 1 раз
                     }
-                    // ---------------------
 
                     setTimeout(() => {
                         document.getElementById('btn').style.display = 'inline-block';
-                        document.getElementById('btn').innerText = "Еще раз";
+                        document.getElementById('btn').innerText = "Start Over";
                     }, 2000);
 
                 } else {
-                    // Крутим рулетку
+                    // КРУТИМ
                     if (now - lastSwitchTime > switchSpeed) {
                         lastSwitchTime = now;
                         if (iconMeshes[currentImageIndex]) iconMeshes[currentImageIndex].visible = false;
@@ -184,12 +191,14 @@
 <body>
   <div id="debug-console">Готов...<br></div>
   
+  <div id="screen-border"></div>
+
   <div id="lottie-container"></div>
 
   <div id="container" style="width: 100vw; height: 100vh;"></div>
   
   <div id="bottom-ui">
-    <button id="btn" onclick="startRoulette()">КРУТИТЬ</button>
+    <button id="btn" onclick="startRoulette()">Start</button>
   </div>
 </body>
 </html>
