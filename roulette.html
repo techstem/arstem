@@ -2,45 +2,63 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AR Roulette Final</title>
+  <title>WebAR Photo & Switch</title>
   <style>
     body { margin: 0; overflow: hidden; }
 
-    /* 1. ВЕРНУЛ РАМКУ ЭКРАНА */
+    /* Рамка экрана */
     #screen-border {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background-image: url('./screen_border.png'); /* Твоя картинка */
-      background-size: 100% 100%; 
-      background-repeat: no-repeat;
-      pointer-events: none; 
-      z-index: 999; /* Поверх видео, но под интерфейсом */
+      background-image: url('./screen_border.png');
+      background-size: 100% 100%; background-repeat: no-repeat;
+      pointer-events: none; z-index: 999;
     }
     
-    /* Слой для конфетти (Самый верхний) */
+    /* Конфетти (Lottie) */
     #lottie-container {
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      z-index: 2000; 
-      pointer-events: none; 
-      display: none; 
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 2000; pointer-events: none; display: none; 
     }
 
-    #bottom-ui {
-      position: fixed; bottom: 30px; left: 0; width: 100%;
-      text-align: center; z-index: 3000; font-family: sans-serif;
-    }
+    /* --- НОВЫЙ ИНТЕРФЕЙС --- */
     
-    button {
-      padding: 15px 30px; font-size: 20px; border-radius: 40px;
-      border: none; background: #ff0055; color: white; font-weight: bold;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer;
+    /* Кнопка "Сделать фото" (Круглая внизу) */
+    #capture-btn {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      width: 70px; height: 70px;
+      background: white; border: 4px solid #ccc; border-radius: 50%;
+      z-index: 3000; cursor: pointer; display: none; /* Скрыта до старта */
     }
-    button:active { transform: scale(0.95); }
+    #capture-btn:active { transform: translateX(-50%) scale(0.95); background: #eee; }
+    /* Красный кружок внутри */
+    #capture-btn::after {
+        content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 50px; height: 50px; background: #ff0055; border-radius: 50%;
+    }
+
+    /* Кнопка "Переключить камеру" (Справа сверху) */
+    #switch-btn {
+      position: fixed; top: 20px; right: 20px;
+      width: 50px; height: 50px;
+      background: rgba(0,0,0,0.5); border-radius: 50%;
+      border: 1px solid white; z-index: 3000;
+      display: flex; justify-content: center; align-items: center;
+      cursor: pointer;
+    }
+    #switch-btn svg { width: 30px; height: 30px; fill: white; }
+
+    /* Кнопка "Старт / Еще раз" */
+    #action-btn {
+      position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
+      padding: 12px 30px; font-size: 18px; border-radius: 40px;
+      border: none; background: #ff0055; color: white; font-weight: bold;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer; z-index: 3001;
+    }
 
     #debug-console {
       position: fixed; top: 0; left: 0; background: rgba(0,0,0,0.5); 
-      color: #00ff00; padding: 10px; z-index: 9999; 
-      font-family: monospace; font-size: 14px; pointer-events: none;
+      color: #00ff00; padding: 5px; z-index: 9999; 
+      font-family: monospace; font-size: 10px; pointer-events: none;
     }
   </style>
 
@@ -65,18 +83,45 @@
         if(el) el.innerHTML = msg + "<br>" + el.innerHTML;
     }
 
-    // --- НАСТРОЙКА LOTTIE ---
-    let lottieAnim = null;
+    // --- ФУНКЦИЯ: СДЕЛАТЬ СКРИНШОТ ---
+    function capturePhoto(mindarThree) {
+        const video = mindarThree.video;
+        const renderer = mindarThree.renderer;
+        
+        // 1. Создаем временный холст размером с видео
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
 
+        // 2. Рисуем видео (зеркалим по горизонтали, как в зеркале)
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Сброс трансформации
+
+        // 3. Рисуем 3D-сцену поверх видео
+        // (Нам нужно взять то, что сейчас на экране WebGL)
+        ctx.drawImage(renderer.domElement, 0, 0, canvas.width, canvas.height);
+
+        // 4. Сохраняем файл
+        const dataURL = canvas.toDataURL("image/png");
+        const link = document.createElement("a");
+        link.download = "my-ar-photo.png";
+        link.href = dataURL;
+        link.click();
+    }
+
+    // --- LOTTIE SETUP ---
+    let lottieAnim = null;
     window.initLottie = () => {
         lottieAnim = lottie.loadAnimation({
             container: document.getElementById('lottie-container'), 
             renderer: 'svg',
-            loop: false,     // <--- ИСПРАВЛЕНО: Теперь проигрывается 1 раз
+            loop: false,     
             autoplay: false, 
             path: './confetti.json' 
         });
-        log("Lottie готов");
     };
 
     const start = async () => {
@@ -88,12 +133,16 @@
         });
         const { renderer, scene, camera } = mindarThree;
 
+        // !!! ВАЖНО ДЛЯ СКРИНШОТОВ !!!
+        // Разрешаем сохранять буфер картинки
+        renderer.preserveDrawingBuffer = true;
+
         const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 2);
         scene.add(light);
 
         const anchor = mindarThree.addAnchor(1);
 
-        // MASK OCCLUDER
+        // OCCLUDER
         const faceMesh = mindarThree.addFaceMesh();
         faceMesh.material = new THREE.MeshBasicMaterial({ colorWrite: false });
         faceMesh.renderOrder = 0;
@@ -104,23 +153,22 @@
         const iconPaths = ['./icon1.png', './icon2.png', './icon3.png', './icon4.png'];
         const iconMeshes = [];
         const contentGroup = new THREE.Group();
-        contentGroup.position.set(0, 0.8, -0.1); 
+        contentGroup.position.set(0, 0.5, -0.1); 
         anchor.group.add(contentGroup);
 
         iconPaths.forEach((path, index) => {
             textureLoader.load(path, (tex) => {
-                const geo = new THREE.PlaneGeometry(0.6, 0.6);
+                const geo = new THREE.PlaneGeometry(0.6, 0.6); // РАЗМЕР КАРТИНКИ
                 const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
                 const mesh = new THREE.Mesh(geo, mat);
                 mesh.visible = (index === 0);
                 mesh.renderOrder = 2;
                 contentGroup.add(mesh);
                 iconMeshes[index] = mesh;
-                log(`Картинка ${index+1} готова`);
             });
         });
 
-        // ПЕРЕМЕННЫЕ
+        // ПЕРЕМЕННЫЕ ЛОГИКИ
         let isRunning = false;
         let startTime = 0;
         let lastSwitchTime = 0;
@@ -128,48 +176,69 @@
         const switchSpeed = 0.1;
         const totalDuration = 3.0; 
 
+        // КНОПКА ЗАПУСКА РУЛЕТКИ
         window.startRoulette = () => {
             if (isRunning) return;
-            log("Старт!");
             isRunning = true;
             startTime = new Date().getTime() / 1000;
-            document.getElementById('btn').style.display = 'none';
             
-            // Скрываем Lottie при рестарте
+            // Прячем кнопку старта, показываем кнопку фото
+            document.getElementById('action-btn').style.display = 'none';
+            document.getElementById('capture-btn').style.display = 'block';
+            
             document.getElementById('lottie-container').style.display = 'none';
-            if(lottieAnim) {
-                lottieAnim.stop();
-            }
+            if(lottieAnim) lottieAnim.stop();
+        };
+
+        // КНОПКА ФОТО
+        window.takeSnap = () => {
+            capturePhoto(mindarThree);
+            // Визуальный эффект "вспышки"
+            const flash = document.createElement('div');
+            flash.style.position = 'fixed'; flash.style.top=0; flash.style.left=0;
+            flash.style.width='100%'; flash.style.height='100%';
+            flash.style.background='white'; flash.style.zIndex='9999';
+            flash.style.opacity='1'; flash.style.transition='opacity 0.5s';
+            document.body.appendChild(flash);
+            setTimeout(() => { flash.style.opacity='0'; }, 50);
+            setTimeout(() => { flash.remove(); }, 550);
+        };
+
+        // КНОПКА СМЕНЫ КАМЕРЫ
+        window.switchCam = () => {
+            mindarThree.switchCamera();
         };
 
         await mindarThree.start();
+        
+        // Показываем кнопку фото после старта AR, чтобы можно было фоткаться сразу
+        document.getElementById('capture-btn').style.display = 'block';
 
         renderer.setAnimationLoop(() => {
             const now = new Date().getTime() / 1000;
 
             if (isRunning) {
-                // ПОБЕДА
                 if (now - startTime > totalDuration) {
+                    // КОНЕЦ РУЛЕТКИ
                     isRunning = false;
-                    log("Финиш!");
-
+                    
+                    // Показываем результат
                     iconMeshes.forEach(m => { if(m) m.visible = false; });
                     if (iconMeshes[3]) iconMeshes[3].visible = true;
 
-                    // ЗАПУСК LOTTIE
+                    // Конфетти
                     const lottieDiv = document.getElementById('lottie-container');
                     lottieDiv.style.display = 'block'; 
-                    if(lottieAnim) {
-                        lottieAnim.goToAndPlay(0, true); // Играем с начала 1 раз
-                    }
+                    if(lottieAnim) lottieAnim.goToAndPlay(0, true);
 
                     setTimeout(() => {
-                        document.getElementById('btn').style.display = 'inline-block';
-                        document.getElementById('btn').innerText = "Start Over";
+                        const btn = document.getElementById('action-btn');
+                        btn.style.display = 'inline-block';
+                        btn.innerText = "Еще раз";
                     }, 2000);
 
                 } else {
-                    // КРУТИМ
+                    // АНИМАЦИЯ
                     if (now - lastSwitchTime > switchSpeed) {
                         lastSwitchTime = now;
                         if (iconMeshes[currentImageIndex]) iconMeshes[currentImageIndex].visible = false;
@@ -189,16 +258,19 @@
   </script>
 </head>
 <body>
-  <div id="debug-console">Готов...<br></div>
+  <div id="debug-console"></div>
   
   <div id="screen-border"></div>
-
   <div id="lottie-container"></div>
-
   <div id="container" style="width: 100vw; height: 100vh;"></div>
-  
-  <div id="bottom-ui">
-    <button id="btn" onclick="startRoulette()">Start</button>
+
+  <div id="switch-btn" onclick="switchCam()">
+    <svg viewBox="0 0 24 24"><path d="M20 4h-3.17L15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 11.5V13H9v2.5L5.5 12 9 8.5V11h6V8.5l3.5 3.5-3.5 3.5z"/></svg>
   </div>
+
+  <button id="action-btn" onclick="startRoulette()">КРУТИТЬ</button>
+
+  <div id="capture-btn" onclick="takeSnap()"></div>
+
 </body>
 </html>
