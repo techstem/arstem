@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>WebAR Final Aligned</title>
+  <title>WebAR Roulette 10 Images</title>
   <style>
     body { margin: 0; overflow: hidden; }
 
@@ -56,7 +56,6 @@
       font-family: monospace; font-size: 10px; pointer-events: none;
     }
 
-    /* Вспышка (медленная) */
     .flash-effect {
         position: fixed; top:0; left:0; width:100%; height:100%;
         background: white; z-index: 9999; opacity: 1;
@@ -90,64 +89,43 @@
     borderOverlayImage.src = './screen_border.png';
     borderOverlayImage.crossOrigin = "anonymous";
 
-    // --- ФУНКЦИЯ ФОТО С ПРАВИЛЬНЫМ ЦЕНТРИРОВАНИЕМ ---
     async function captureAndShare(mindarThree, scene, camera) {
         const video = mindarThree.video;
         const renderer = mindarThree.renderer;
         
         const canvas = document.createElement("canvas");
-        // Берем точный размер окна
         canvas.width = window.innerWidth * window.devicePixelRatio;
         canvas.height = window.innerHeight * window.devicePixelRatio;
         const ctx = canvas.getContext("2d");
 
-        // 1. ВЫЧИСЛЯЕМ ОБРЕЗКУ ВИДЕО (SOURCE CROP)
-        // Чтобы видео ровно заполнило экран (object-fit: cover)
         const videoW = video.videoWidth;
         const videoH = video.videoHeight;
         const canvasW = canvas.width;
         const canvasH = canvas.height;
-        
         const videoAspect = videoW / videoH;
         const canvasAspect = canvasW / canvasH;
 
         let sx, sy, sWidth, sHeight;
-
         if (canvasAspect > videoAspect) {
-            // Холст шире видео: режем верх и низ
-            sWidth = videoW;
-            sHeight = videoW / canvasAspect;
-            sx = 0;
-            sy = (videoH - sHeight) / 2;
+            sWidth = videoW; sHeight = videoW / canvasAspect;
+            sx = 0; sy = (videoH - sHeight) / 2;
         } else {
-            // Холст уже видео: режем бока
-            sWidth = videoH * canvasAspect;
-            sHeight = videoH;
-            sx = (videoW - sWidth) / 2;
-            sy = 0;
+            sWidth = videoH * canvasAspect; sHeight = videoH;
+            sx = (videoW - sWidth) / 2; sy = 0;
         }
 
-        // 2. РИСУЕМ ВИДЕО (Зеркально)
         ctx.save();
-        ctx.translate(canvas.width, 0); 
-        ctx.scale(-1, 1);
-        
-        // Рисуем вырезанный кусок (sx, sy) на весь холст (0, 0)
+        ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
         ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-        
         ctx.restore();
 
-        // 3. РИСУЕМ 3D СЦЕНУ (AR)
-        // Принудительный рендер для свежести буфера
         renderer.render(scene, camera);
         ctx.drawImage(renderer.domElement, 0, 0, canvas.width, canvas.height);
 
-        // 4. РИСУЕМ ОВЕРЛЕЙ (Рамка)
         if (borderOverlayImage.complete) {
              ctx.drawImage(borderOverlayImage, 0, 0, canvas.width, canvas.height);
         }
 
-        // 5. ШЕРИНГ / СОХРАНЕНИЕ
         canvas.toBlob(async (blob) => {
             const file = new File([blob], "ar-photo.png", { type: "image/png" });
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -165,7 +143,6 @@
         }, 'image/png');
     }
 
-    // LOTTIE
     let lottieAnim = null;
     window.initLottie = () => {
         lottieAnim = lottie.loadAnimation({
@@ -189,15 +166,19 @@
         scene.add(light);
         const anchor = mindarThree.addAnchor(1);
 
-        // Маска-невидимка
         const faceMesh = mindarThree.addFaceMesh();
         faceMesh.material = new THREE.MeshBasicMaterial({ colorWrite: false });
         faceMesh.renderOrder = 0;
         anchor.group.add(faceMesh);
 
-        // Картинки рулетки
         const textureLoader = new THREE.TextureLoader();
-        const iconPaths = ['./icon1.png', './icon2.png', './icon3.png', './icon4.png'];
+        
+        // --- ОБНОВЛЕННЫЙ СПИСОК КАРТИНОК (10 ШТУК) ---
+        const iconPaths = [
+            './icon1.png', './icon2.png', './icon3.png', './icon4.png', './icon5.png',
+            './icon6.png', './icon7.png', './icon8.png', './icon9.png', './icon10.png'
+        ];
+        
         const iconMeshes = [];
         const contentGroup = new THREE.Group();
         contentGroup.position.set(0, 0.8, -0.1); 
@@ -217,7 +198,6 @@
             });
         });
 
-        // ЛОГИКА
         let isRunning = false;
         let startTime = 0;
         let lastSwitchTime = 0;
@@ -237,7 +217,6 @@
 
         window.takeSnap = () => {
             captureAndShare(mindarThree, scene, camera);
-            
             const flash = document.createElement('div');
             flash.className = 'flash-effect';
             document.body.appendChild(flash);
@@ -255,11 +234,22 @@
             if (isRunning) {
                 if (now - startTime > totalDuration) {
                     isRunning = false;
+                    
+                    // Скрываем все
                     iconMeshes.forEach(m => { if(m) m.visible = false; });
-                    if (iconMeshes[3]) iconMeshes[3].visible = true;
+                    
+                    // --- ВЫБИРАЕМ ПОБЕДИТЕЛЯ ---
+                    // Здесь я поставил ПОСЛЕДНЮЮ картинку (№10) как результат.
+                    // Если хочешь случайную, замени строку ниже на:
+                    // const winnerIndex = Math.floor(Math.random() * iconMeshes.length);
+                    const winnerIndex = iconMeshes.length - 1; // Сейчас это icon10.png
+                    
+                    if (iconMeshes[winnerIndex]) iconMeshes[winnerIndex].visible = true;
+
                     const lottieDiv = document.getElementById('lottie-container');
                     lottieDiv.style.display = 'block'; 
                     if(lottieAnim) lottieAnim.goToAndPlay(0, true);
+                    
                     setTimeout(() => {
                         const btn = document.getElementById('action-btn');
                         btn.style.display = 'inline-block';
@@ -269,7 +259,10 @@
                     if (now - lastSwitchTime > switchSpeed) {
                         lastSwitchTime = now;
                         if (iconMeshes[currentImageIndex]) iconMeshes[currentImageIndex].visible = false;
-                        currentImageIndex = (currentImageIndex + 1) % 4;
+                        
+                        // Теперь это работает для ЛЮБОГО количества картинок
+                        currentImageIndex = (currentImageIndex + 1) % iconMeshes.length;
+                        
                         if (iconMeshes[currentImageIndex]) iconMeshes[currentImageIndex].visible = true;
                     }
                 }
